@@ -183,6 +183,19 @@ La [etapa 3 del ejemplo](../ejemplo/pipeline.py) construye este modelo sobre la 
 
 Por qué importa el tipo 2: si el cambio de equipo sobrescribiera la fila del agente (tipo 1), las conversaciones anteriores al traslado quedarían atribuidas al equipo nuevo. La consulta `SCD2 frente a sobrescribir` de [`consultas.py`](../ejemplo/consultas.py) lo muestra con los datos sintéticos: un equipo creado a mitad de octubre recibe 37 conversaciones al sobrescribir, cuando solo atendió 14.
 
+### Contratos de calidad entre capas en el ejemplo
+
+Que una capa sea "el contrato de entrada de la siguiente" solo vale si el contrato se verifica. En el ejemplo, cada etapa calcula su salida en memoria, la audita con [`calidad.py`](../ejemplo/calidad.py) y **solo la escribe si pasa** (patrón *write-audit-publish*). Si alguna regla falla, la capa no se publica, la etapa se detiene y el reporte `datos/informes/calidad/<capa>_<periodo>.json` dice qué regla falló y en cuántas filas.
+
+| Capa | Reglas |
+|---|---|
+| Crudo | Clave única y no nula, campos obligatorios, canal y fecha dentro de su dominio, **conciliación del embudo** (filas = voz seleccionada + chats, y lo seleccionado no supera el universo) y `analizable` coherente con el largo del texto |
+| Enriquecido | Mismas conversaciones que la capa cruda, notas de 1 a 10, motivo dentro del catálogo, cita literal de la transcripción, omitidas sin notas y una sola versión de análisis |
+| Negocio | Una evaluación por cada conversación analizable, pesos que suman 1 y puntaje dentro de la escala |
+| Modelo estrella | Hechos sin agente vigente, grano sin duplicados y hechos = evaluaciones × parámetros |
+
+El reporte se escribe también cuando todo pasa: queda constancia de qué se verificó en cada corrida. La validación con Pydantic protege cada respuesta del modelo; los contratos protegen la capa completa, incluidos los defectos que ninguna fila revela por sí sola, como una conversación perdida en un `JOIN` o un embudo que no cuadra.
+
 ## Siguiente
 
 [3. La IA dentro del pipeline →](03-ia-en-el-pipeline.md)

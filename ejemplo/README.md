@@ -1,6 +1,6 @@
 # Ejemplo ejecutable
 
-Reproduce el patrón del sistema real con **datos 100 % sintéticos**: 3 etapas comunicadas por Parquet, capas crudo → enriquecido → negocio, un modelo estrella con dimensión SCD tipo 2, checkpoints reanudables y consultas SQL analíticas. El LLM está simulado con reglas, así que no necesitas GPU, Ollama ni bases de datos.
+Reproduce el patrón del sistema real con **datos 100 % sintéticos**: 3 etapas comunicadas por Parquet, capas crudo → enriquecido → negocio con contratos de calidad entre ellas, un modelo estrella con dimensión SCD tipo 2, checkpoints reanudables y consultas SQL analíticas. El LLM está simulado con reglas, así que no necesitas GPU, Ollama ni bases de datos.
 
 ## Quick path
 
@@ -13,7 +13,7 @@ uv run pipeline.py        # 2. extracción → análisis → informe
 uv run consultas.py       # 3. SQL analítico sobre los Parquet
 ```
 
-Resultado esperado: `datos/` con las capas particionadas y `datos/informes/indicadores_<periodo>.json`.
+Resultado esperado: `datos/` con las capas particionadas, `datos/informes/indicadores_<periodo>.json` y un reporte de calidad por capa y periodo en `datos/informes/calidad/`.
 
 ## Prueba la reanudación
 
@@ -42,6 +42,7 @@ uv run pytest
 | Reanudación | Que interrumpir y reanudar dé lo mismo que una corrida completa **sin volver a llamar al modelo** por las filas hechas |
 | Versión del análisis | Que cambiar el modelo descarte el checkpoint viejo |
 | Esquema | Notas dentro de la matriz, motivos válidos y razonamiento antes que las notas |
+| Contratos de calidad | Que cada regla detecte su defecto (una corrupción dirigida por regla) y que una violación detenga la etapa **sin publicar la capa** |
 | Modelo estrella | Grano único, integridad referencial, vigencias SCD2 contiguas, versión vigente por fecha, calendario completo y conciliación con pandas |
 
 Se verificaron introduciendo errores a propósito en el pipeline (mutaciones): cada uno hace fallar al menos una prueba.
@@ -58,6 +59,7 @@ Se verificaron introduciendo errores a propósito en el pipeline (mutaciones): c
 | Huella de entrada y versión del análisis | `huella_entrada`, `version_analisis` |
 | Cita literal por número de fragmento | final de `etapa2_analisis` |
 | Pesos aplicados fuera del modelo y alerta de categoría dominante | `etapa3_informe` |
+| Contratos de calidad entre capas: auditar antes de publicar | `calidad.py` y las llamadas a `auditar` en `pipeline.py` |
 | Modelo estrella: grano conversación × parámetro | `construir_modelo_estrella`, `sql_hecho_evaluacion` |
 | Dimensión SCD tipo 2 con `LEAD()` y búsqueda de clave sustituta por fecha | `SQL_DIM_AGENTE`, `sql_hecho_evaluacion` |
 | Calendario completo con clave `AAAAMMDD` | `SQL_DIM_FECHA` |
@@ -80,5 +82,7 @@ datos/
 │       ├── hecho_evaluacion/operacion=demo/periodo=…/
 │       └── dim_agente/ · dim_fecha/ · dim_parametro/ · dim_operacion/
 ├── checkpoints/
-└── informes/indicadores_<periodo>.json
+└── informes/
+    ├── indicadores_<periodo>.json
+    └── calidad/<capa>_<periodo>.json             # reporte de los contratos de cada capa
 ```

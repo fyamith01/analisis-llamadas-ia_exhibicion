@@ -9,6 +9,9 @@
     etapa 3  informe      métricas en pandas   → datos/negocio/     (oro)
                           + modelo estrella    → datos/negocio/modelo/
 
+Cada capa pasa por su contrato de calidad (`calidad.py`) ANTES de escribirse: si
+alguna regla falla, la capa no se publica y la etapa se detiene.
+
 El LLM está SIMULADO con reglas para que el ejemplo corra sin GPU. En el sistema
 real, `analizar()` llama a un modelo con el JSON Schema de `Evaluacion` en `format=`.
 
@@ -30,6 +33,8 @@ from typing import Literal
 import duckdb
 import pandas as pd
 from pydantic import BaseModel, Field
+
+import calidad
 
 RAIZ = Path(__file__).parent / "datos"
 FUENTE = RAIZ / "fuente" / "fuente.duckdb"
@@ -74,6 +79,11 @@ def escribir_atomico(df: pd.DataFrame, destino: Path) -> None:
     os.replace(tmp, destino)
 
 
+def auditar(capa: str, periodo: str, df: pd.DataFrame, violaciones: dict[str, int]) -> None:
+    """Contrato de la capa antes de publicarla; el reporte queda en datos/informes/calidad/."""
+    calidad.auditar(capa, periodo, len(df), violaciones, RAIZ / "informes" / "calidad")
+
+
 def periodos_disponibles(capa: str, tabla: str = "conversaciones") -> list[str]:
     base = RAIZ / capa / tabla / f"operacion={OPERACION}"
     return sorted(p.name.split("=", 1)[1] for p in base.glob("periodo=*")) if base.exists() else []
@@ -113,6 +123,8 @@ def etapa1_extraccion() -> None:
         # ORDER BY determinista: la huella del checkpoint depende del orden.
         df = df.sort_values(["fecha", "conversacion_id"], ignore_index=True)
         df["analizable"] = df["texto"].str.len() >= MIN_CARACTERES
+        embudo = {"universo_voz": universo, "voz": len(voz), "chats": len(chat)}
+        auditar("crudo", periodo, df, calidad.contrato_crudo(df, periodo, embudo, MIN_CARACTERES))
         escribir_atomico(df, ruta_capa("crudo", periodo))
         print(f"[etapa 1] {periodo}: embudo voz {universo} → {len(voz)} (estado y duración) · "
               f"chats {len(chat)} · analizables {int(df['analizable'].sum())} de {len(df)}")
@@ -230,6 +242,8 @@ def etapa2_analisis(interrumpir: int | None = None) -> None:
         # La cita se toma de la transcripción: es literal por construcción.
         enriquecido["cita"] = frag.map(lambda s: re.sub(r"^\w+: ", "", s) if isinstance(s, str) else None)
         enriquecido["version_analisis"] = clave["version"]
+        auditar("enriquecido", periodo, enriquecido, calidad.contrato_enriquecido(
+            enriquecido, df["conversacion_id"], PESOS, MOTIVOS, version_analisis()))
         escribir_atomico(enriquecido, ruta_capa("enriquecido", periodo))
         print(f"[etapa 2] {periodo}: {resultados.shape[0]} analizadas · "
               f"{int((~df['analizable']).sum())} omitidas por texto corto (marcadas, no borradas)")
@@ -244,8 +258,8 @@ def etapa3_informe() -> None:
         raise SystemExit("No hay capa enriquecida: corre la etapa 2.")
     todas: list[pd.DataFrame] = []
     for periodo in periodos:
-        df = pd.read_parquet(ruta_capa("enriquecido", periodo))
-        df = df[df["analizable"]].copy()
+        enriquecido = pd.read_parquet(ruta_capa("enriquecido", periodo))
+        df = enriquecido[enriquecido["analizable"]].copy()
         df["puntaje_ponderado"] = sum(df[p] * w for p, w in PESOS.items())
 
         por_agente = (df.groupby(["agente_id", "canal"])
@@ -259,6 +273,7 @@ def etapa3_informe() -> None:
         # La capa enriquecida no se reescribe: el puntaje vive en la capa de negocio.
         columnas = ["conversacion_id", "agente_id", "fecha", "canal", "motivo", *PESOS,
                     "puntaje_ponderado", "version_analisis"]
+        auditar("negocio", periodo, df, calidad.contrato_negocio(df, enriquecido, PESOS))
         escribir_atomico(df[columnas], ruta_capa("negocio", periodo, "evaluaciones"))
         todas.append(df[columnas])
         escribir_atomico(por_agente, ruta_capa("negocio", periodo, "ranking_agentes"))
@@ -357,10 +372,8 @@ def construir_modelo_estrella(evaluaciones: pd.DataFrame) -> None:
     hechos = con.execute(sql_hecho_evaluacion()).df()
     con.close()
 
-    # Integridad referencial: un hecho sin agente vigente es un error de datos, no se rellena.
-    huerfanos = int(hechos["agente_sk"].isna().sum())
-    if huerfanos:
-        raise SystemExit(f"[etapa 3] {huerfanos} hechos sin versión vigente de agente: revisa la bitácora de equipos.")
+    # Integridad referencial, grano y conciliación; los huérfanos detienen la etapa en vez de rellenarse.
+    auditar("modelo", "todos", hechos, calidad.contrato_modelo(hechos, evaluaciones, len(PESOS)))
     hechos["agente_sk"] = hechos["agente_sk"].astype("int32")
 
     for nombre, dim in dimensiones.items():
