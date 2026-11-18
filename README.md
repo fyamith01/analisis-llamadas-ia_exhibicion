@@ -91,3 +91,7 @@ Detalles en [ejemplo/README.md](ejemplo/README.md).
 ## Mi rol
 
 Diseñé la arquitectura, definí las reglas de datos y de calidad con las áreas de negocio, operé el servidor y presenté los resultados a la gerencia de los clientes. Los asistentes de IA escribieron buena parte del código **bajo mi dirección**: yo fijé el alcance, revisé cada cambio y validé cada cifra antes de que llegara a un cliente.
+
+## Licencia
+
+[MIT](LICENSE). Cubre la documentación y el ejemplo de este repositorio, no el sistema original (ver [AVISO.md](AVISO.md)).

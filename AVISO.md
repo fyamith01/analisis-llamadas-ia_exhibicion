@@ -21,6 +21,10 @@ Este repositorio **describe** un sistema que construí como parte de mi trabajo.
 
 Los nombres de columnas, categorías, parámetros y cifras que aparecen en la documentación y en el ejemplo son **ilustrativos**.
 
+## Licencia
+
+El contenido de este repositorio (documentación y ejemplo) se publica bajo licencia [MIT](LICENSE). La licencia cubre solo lo que está aquí. No otorga ningún derecho sobre el sistema original, que no forma parte del repositorio.
+
 ## Si eres de la empresa
 
 Si crees que algo de este repositorio no debería estar publicado, escríbeme y lo retiro de inmediato.
