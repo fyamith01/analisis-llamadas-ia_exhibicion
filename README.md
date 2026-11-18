@@ -76,6 +76,7 @@ Léela en orden o salta a lo que te interese:
 | 4 | [Desarrollo con sistemas multiagente](docs/04-desarrollo-multiagente.md) | Cómo usé un orquestador con subagentes, memoria y revisión independiente para construir el sistema |
 | 5 | [Despliegue y operación](docs/05-despliegue-y-operacion.md) | Servidor con GPU, presupuesto de VRAM, ventanas de cron y flujo de git |
 | 6 | [Lecciones aprendidas](docs/06-lecciones-aprendidas.md) | Los errores reales que encontramos y la regla que dejó cada uno |
+| + | [Decisiones de arquitectura (ADR)](docs/adr/README.md) | Por qué 3 etapas, Parquet, LLM local, contratos de calidad, Delta Lake como evolución y juez a ciegas, con lo que costó cada decisión |
 | + | [Artefactos multiagente](docs/artefactos/README.md) | Definiciones de subagente con herramientas restringidas y un documento de feature de ejemplo |
 
 ## Probar el ejemplo

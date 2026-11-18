@@ -83,6 +83,8 @@ La evidencia se maneja por **fragmentos numerados**. El modelo no copia citas: d
 
 ## Principios de diseño
 
+Las decisiones que sostienen estos principios están registradas, con sus costos y alternativas, en los [ADR](adr/README.md).
+
 | Principio | Cómo se aplica |
 |---|---|
 | La IA interpreta, el código cuenta | Ningún indicador sale del LLM. Promedios, rankings y alertas se calculan en pandas |
