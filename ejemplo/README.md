@@ -25,6 +25,27 @@ uv run pipeline.py --etapa 2                    # continúa donde quedó
 
 Si cambias `PROMPT` o `MODELO` en `pipeline.py`, cambia la versión del análisis y el checkpoint viejo se descarta solo.
 
+## Pruebas
+
+```bash
+cd ejemplo
+uv run pytest
+```
+
+`pyproject.toml` solo define el entorno de pruebas; los scripts siguen declarando sus dependencias en línea. Las pruebas trabajan en directorios temporales y no tocan `datos/`. Cubren lo que en el sistema real costó incidentes:
+
+| Prueba | Qué protege |
+|---|---|
+| Escritura atómica | Que un corte nunca deje un Parquet a medias ni archivos temporales |
+| Reconstrucción de chats | Que los mensajes desordenados se unan por marca de tiempo |
+| Embudo | Que fallidas y cortas se excluyan, y que los textos breves se marquen sin borrarse |
+| Reanudación | Que interrumpir y reanudar dé lo mismo que una corrida completa **sin volver a llamar al modelo** por las filas hechas |
+| Versión del análisis | Que cambiar el modelo descarte el checkpoint viejo |
+| Esquema | Notas dentro de la matriz, motivos válidos y razonamiento antes que las notas |
+| Modelo estrella | Grano único, integridad referencial, vigencias SCD2 contiguas, versión vigente por fecha, calendario completo y conciliación con pandas |
+
+Se verificaron introduciendo errores a propósito en el pipeline (mutaciones): cada uno hace fallar al menos una prueba.
+
 ## Qué mirar en el código
 
 | Concepto | Dónde |
