@@ -88,6 +88,17 @@ uv run consultas.py          # consultas SQL con DuckDB sobre los Parquet
 
 Detalles en [ejemplo/README.md](ejemplo/README.md).
 
+## Repositorio relacionado
+
+Las transcripciones de voz que este pipeline lee desde PostgreSQL las produce un servicio de transcripción diarizada que también construí, documentado en su propia exhibición:
+
+| Repositorio | Papel |
+|---|---|
+| [transcripcion-llamadas-ia_exhibicion](https://github.com/fyamith01/transcripcion-llamadas-ia_exhibicion) | Convierte cada audio en texto con turnos `AGENTE` / `CLIENTE` (faster-whisper + NeMo en Docker) y lo deja en PostgreSQL |
+| **Este** | Lee ese texto, audita cada conversación con un LLM y produce el informe mensual |
+
+Los dos comparten el servidor y la GPU en turnos: transcripción de noche y análisis de día. El recorrido completo está en [De punta a punta](https://github.com/fyamith01/transcripcion-llamadas-ia_exhibicion/blob/main/docs/05-de-punta-a-punta.md).
+
 ## Mi rol
 
 Diseñé la arquitectura, definí las reglas de datos y de calidad con las áreas de negocio, operé el servidor y presenté los resultados a la gerencia de los clientes. Los asistentes de IA escribieron buena parte del código **bajo mi dirección**: yo fijé el alcance, revisé cada cambio y validé cada cifra antes de que llegara a un cliente.
