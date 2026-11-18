@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ejemplo:
+    name: Ejemplo, pruebas y estilo
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.12"
+    defaults:
+      run:
+        working-directory: ejemplo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: ejemplo/uv.lock
+
+      - name: Estilo (ruff)
+        run: uv run --locked ruff check .
+
+      - name: Pruebas (pytest)
+        run: uv run --locked pytest
+
+      - name: Recorrido del README (las 3 etapas y las consultas)
+        run: |
+          uv run generar_datos.py
+          uv run pipeline.py
+          uv run consultas.py
+
+  diagramas:
+    name: Diagramas Mermaid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: .github/mermaid/package-lock.json
+      - run: npm ci --prefix .github/mermaid --no-audit --no-fund
+      - run: node .github/mermaid/validar.mjs README.md docs/*.md
+
+  privacidad:
+    name: Términos confidenciales
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Escaneo (la lista viene del secret TERMINOS_PROHIBIDOS)
+        run: .github/scripts/escanear_privacidad.sh
+        env:
+          TERMINOS_PROHIBIDOS: ${{ secrets.TERMINOS_PROHIBIDOS }}

@@ -1,5 +1,7 @@
 # Auditoría de calidad de llamadas y chats con IA
 
+[![CI](https://github.com/fyamith01/analisis-llamadas-ia_exhibicion/actions/workflows/ci.yml/badge.svg)](https://github.com/fyamith01/analisis-llamadas-ia_exhibicion/actions/workflows/ci.yml)
+
 Plataforma de analítica que toma las conversaciones de un contact center (llamadas transcritas con Whisper y chats de WhatsApp), las audita **una por una con un modelo de lenguaje** según una matriz de calidad y produce el informe mensual de gestión para la gerencia de cada cliente: Word, Excel, JSON y tableros HTML.
 
 > [!IMPORTANT]
@@ -81,10 +83,13 @@ El ejemplo reproduce el patrón de las 3 etapas con conversaciones **inventadas*
 
 ```bash
 cd ejemplo
-uv run generar_datos.py      # crea conversaciones sintéticas (capa cruda)
-uv run pipeline.py           # etapas 2 y 3: análisis simulado + métricas
+uv run generar_datos.py      # crea la fuente transaccional sintética
+uv run pipeline.py           # extracción → análisis simulado → métricas y modelo estrella
 uv run consultas.py          # consultas SQL con DuckDB sobre los Parquet
+uv run pytest                # pruebas de reanudación, SCD tipo 2, integridad y conciliación
 ```
+
+Cada push corre en GitHub Actions: estilo con ruff, las pruebas, el recorrido completo del ejemplo, la validación de los diagramas Mermaid y un escaneo de términos confidenciales cuya lista vive en un *secret*, fuera del repositorio.
 
 Detalles en [ejemplo/README.md](ejemplo/README.md).
 

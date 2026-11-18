@@ -1,0 +1,10 @@
+{
+  "name": "validar-mermaid",
+  "private": true,
+  "type": "module",
+  "description": "Valida los diagramas Mermaid de la documentación con el mismo parser que usa GitHub",
+  "dependencies": {
+    "jsdom": "31.0.1",
+    "mermaid": "11.17.2"
+  }
+}

@@ -150,6 +150,14 @@ def huella_entrada(textos: pd.Series) -> str:
     return h.hexdigest()[:12]
 
 
+def guardar_checkpoint(ruta: Path, clave: dict[str, str], hechos: dict[str, dict]) -> None:
+    """Avance parcial: tmp + replace, igual que los Parquet."""
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    tmp = ruta.with_suffix(".tmp")
+    tmp.write_text(json.dumps({**clave, "resultados": hechos}))
+    os.replace(tmp, ruta)
+
+
 def fragmentos(texto: str) -> list[str]:
     return [linea for linea in texto.split("\n") if linea.strip()]
 
@@ -194,12 +202,6 @@ def etapa2_analisis(interrumpir: int | None = None) -> None:
             else:
                 print(f"[etapa 2] {periodo}: checkpoint de otra entrada o versión; se descarta")
 
-        def guardar() -> None:
-            ruta_ck.parent.mkdir(parents=True, exist_ok=True)
-            tmp = ruta_ck.with_suffix(".tmp")
-            tmp.write_text(json.dumps({**clave, "resultados": hechos}))
-            os.replace(tmp, ruta_ck)
-
         paso = max(1, round(len(df) * CADA_PCT / 100))
         nuevos = 0
         try:
@@ -211,12 +213,12 @@ def etapa2_analisis(interrumpir: int | None = None) -> None:
                 hechos[str(i)] = analizar(fila["texto"]).model_dump()
                 nuevos += 1
                 if nuevos % paso == 0:
-                    guardar()
+                    guardar_checkpoint(ruta_ck, clave, hechos)
         except KeyboardInterrupt:
             print(f"[etapa 2] {periodo}: interrumpida tras {nuevos} filas nuevas; el avance queda guardado")
             return
         finally:
-            guardar()
+            guardar_checkpoint(ruta_ck, clave, hechos)
 
         resultados = pd.DataFrame.from_dict(hechos, orient="index")
         resultados.index = resultados.index.astype(int)
@@ -262,7 +264,7 @@ def etapa3_informe() -> None:
         escribir_atomico(por_agente, ruta_capa("negocio", periodo, "ranking_agentes"))
         indicadores = {
             "periodo": periodo,
-            "conversaciones": int(len(df)),
+            "conversaciones": len(df),
             "puntaje_global": round(float(df["puntaje_ponderado"].mean()), 2),
             "por_canal": df.groupby("canal")["puntaje_ponderado"].mean().round(2).to_dict(),
             "motivos": motivos.to_dict(),

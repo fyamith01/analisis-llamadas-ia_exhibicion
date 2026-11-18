@@ -9,3 +9,6 @@ ejemplo/datos/
 
 # Documento de trabajo interno (no se publica)
 odd/
+
+# Dependencias del validador de diagramas
+node_modules/
