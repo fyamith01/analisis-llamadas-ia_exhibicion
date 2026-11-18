@@ -41,6 +41,11 @@ jobs:
           uv run pipeline.py
           uv run consultas.py
 
+      - name: Variante Delta Lake (interrupción, reanudación, prompt v2 y time travel)
+        run: |
+          uv run variante_delta.py --prompt v1 --interrumpir 40
+          uv run variante_delta.py
+
   diagramas:
     name: Diagramas Mermaid
     runs-on: ubuntu-latest

@@ -85,8 +85,9 @@ El ejemplo reproduce el patrón de las 3 etapas con conversaciones **inventadas*
 cd ejemplo
 uv run generar_datos.py      # crea la fuente transaccional sintética
 uv run pipeline.py           # extracción → análisis simulado → métricas y modelo estrella
+uv run variante_delta.py     # evolución: la capa enriquecida como tabla Delta (MERGE + time travel)
 uv run consultas.py          # consultas SQL con DuckDB sobre los Parquet
-uv run pytest                # pruebas de reanudación, SCD tipo 2, integridad y conciliación
+uv run pytest                # pruebas de reanudación, contratos de calidad, SCD tipo 2 y Delta
 ```
 
 Cada push corre en GitHub Actions: estilo con ruff, las pruebas, el recorrido completo del ejemplo, la validación de los diagramas Mermaid y un escaneo de términos confidenciales cuya lista vive en un *secret*, fuera del repositorio.

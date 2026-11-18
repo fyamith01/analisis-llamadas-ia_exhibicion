@@ -147,10 +147,10 @@ PROMPT = "Evalúa la conversación con la matriz de calidad. Devuelve SOLO el JS
 MODELO = "simulado-v1"
 
 
-def version_analisis() -> str:
+def version_analisis(prompt: str | None = None) -> str:
     """Hash de prompt + esquema + modelo. Si algo cambia, el checkpoint viejo no se reutiliza."""
     esquema = json.dumps(Evaluacion.model_json_schema(), sort_keys=True)
-    return hashlib.sha256(f"{PROMPT}|{esquema}|{MODELO}".encode()).hexdigest()[:12]
+    return hashlib.sha256(f"{prompt or PROMPT}|{esquema}|{MODELO}".encode()).hexdigest()[:12]
 
 
 def huella_entrada(textos: pd.Series) -> str:
@@ -172,6 +172,11 @@ def guardar_checkpoint(ruta: Path, clave: dict[str, str], hechos: dict[str, dict
 
 def fragmentos(texto: str) -> list[str]:
     return [linea for linea in texto.split("\n") if linea.strip()]
+
+
+def cita_literal(texto: str, fragmento: int) -> str:
+    """La cita se toma de la transcripción por número de fragmento: es literal por construcción."""
+    return re.sub(r"^\w+: ", "", fragmentos(texto)[fragmento])
 
 
 def analizar(texto: str) -> Evaluacion:
@@ -235,12 +240,10 @@ def etapa2_analisis(interrumpir: int | None = None) -> None:
         resultados = pd.DataFrame.from_dict(hechos, orient="index")
         resultados.index = resultados.index.astype(int)
         enriquecido = df.join(resultados)
-        frag = enriquecido.apply(
-            lambda f: fragmentos(f["texto"])[int(f["fragmento_evidencia"])] if pd.notna(f["fragmento_evidencia"]) else None,
+        enriquecido["cita"] = enriquecido.apply(
+            lambda f: cita_literal(f["texto"], int(f["fragmento_evidencia"])) if pd.notna(f["fragmento_evidencia"]) else None,
             axis=1,
         )
-        # La cita se toma de la transcripción: es literal por construcción.
-        enriquecido["cita"] = frag.map(lambda s: re.sub(r"^\w+: ", "", s) if isinstance(s, str) else None)
         enriquecido["version_analisis"] = clave["version"]
         auditar("enriquecido", periodo, enriquecido, calidad.contrato_enriquecido(
             enriquecido, df["conversacion_id"], PESOS, MOTIVOS, version_analisis()))

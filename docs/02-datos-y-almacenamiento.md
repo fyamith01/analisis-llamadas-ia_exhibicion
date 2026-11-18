@@ -125,7 +125,7 @@ Hoy las capas son archivos Parquet en el disco de un servidor, una solución pro
 |---|---|---|
 | **Particionado estilo Hive** (`operacion=…/periodo=…/`) | La ruta del archivo codifica las dimensiones | Lecturas selectivas por partición. El ejemplo de este repositorio ya lo usa |
 | **Almacenamiento de objetos** (S3, ADLS, GCS o MinIO) | Las capas salen del disco local | Separación entre cómputo y almacenamiento, y acceso desde varias herramientas |
-| **Delta Lake** sobre las mismas capas | Los Parquet quedan bajo un *transaction log* | Transacciones ACID, `MERGE` para reanudar análisis (reemplaza el checkpoint casero), *time travel* para comparar versiones de prompt, y validación y evolución de esquema |
+| **Delta Lake** sobre las mismas capas | Los Parquet quedan bajo un *transaction log* | Transacciones ACID, `MERGE` para reanudar análisis (reemplaza el checkpoint casero), *time travel* para comparar versiones de prompt, y validación y evolución de esquema. El ejemplo incluye una variante que lo demuestra |
 | **Modelo dimensional para la capa de negocio** | Tabla de hechos `hecho_evaluacion` (una fila por conversación y parámetro) y dimensiones `agente`, `operacion`, `parametro` y `fecha` | Consultas de BI rápidas y consistentes en un warehouse. `agente` como dimensión lenta tipo 2 para conservar su historial de campañas. El ejemplo de este repositorio ya lo implementa |
 | **Orquestación declarativa** (Airflow, Dagster o Prefect) | Las 3 etapas pasan a ser tareas con dependencias | Reintentos, alertas y linaje visibles, en reemplazo de `cron` + `tmux` |
 
@@ -195,6 +195,16 @@ Que una capa sea "el contrato de entrada de la siguiente" solo vale si el contra
 | Modelo estrella | Hechos sin agente vigente, grano sin duplicados y hechos = evaluaciones × parámetros |
 
 El reporte se escribe también cuando todo pasa: queda constancia de qué se verificó en cada corrida. La validación con Pydantic protege cada respuesta del modelo; los contratos protegen la capa completa, incluidos los defectos que ninguna fila revela por sí sola, como una conversación perdida en un `JOIN` o un embudo que no cuadra.
+
+### La variante Delta Lake en el ejemplo
+
+[`variante_delta.py`](../ejemplo/variante_delta.py) es una propuesta de evolución, no el sistema real. Convierte la capa enriquecida en una tabla Delta y demuestra tres cosas sobre los mismos datos sintéticos:
+
+- **`MERGE` en lugar del checkpoint.** Cada lote de 25 conversaciones se confirma en una transacción. Si se corta a las 40 filas, la tabla tiene 25 y la reanudación solo analiza lo que falta. El lote pasa por el mismo contrato de calidad antes de confirmarse.
+- **Una fila por conversación.** Un prompt más exigente (v2) actualiza en sitio solo las filas de otra `version_analisis`. Repetir la misma versión no llama al modelo ni crea commits.
+- **Time travel para comparar prompts.** Cada commit guarda su prompt en la metadata. La comparación carga la última versión de la tabla de cada prompt y mide con SQL cuánto cambió la nota de solución por motivo.
+
+El costo también es visible: cada `MERGE` de actualización reescribe los archivos de la partición (*copy-on-write*), los lotes pequeños fragmentan la tabla hasta que `OPTIMIZE` la compacta, y el historial ocupa disco hasta que `VACUUM` lo recorta. Por eso la decisión depende del volumen. Con un servidor y archivos de un mes, Parquet con un checkpoint atómico es suficiente; con varios procesos escribiendo o con auditorías que piden "qué decía el informe con el prompt anterior", Delta paga su costo.
 
 ## Siguiente
 
