@@ -61,7 +61,7 @@ gantt
     section Corte
     cron detiene main.py     :milestone, 00:30, 0m
     section Whisper
-    Transcripción nocturna   :w1, 00:30, 5h30m
+    Transcripción nocturna   :w1, 00:30, 330m
     section Reanudación
     cron reanuda main.py     :milestone, 06:00, 0m
 ```
