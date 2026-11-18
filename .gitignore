@@ -1,0 +1,11 @@
+# Entorno
+.venv/
+__pycache__/
+*.pyc
+.env
+
+# Datos generados por el ejemplo
+ejemplo/datos/
+
+# Documento de trabajo interno (no se publica)
+odd/
