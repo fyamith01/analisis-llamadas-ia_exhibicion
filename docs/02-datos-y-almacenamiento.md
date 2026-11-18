@@ -126,7 +126,7 @@ Hoy las capas son archivos Parquet en el disco de un servidor, una solución pro
 | **Particionado estilo Hive** (`operacion=…/periodo=…/`) | La ruta del archivo codifica las dimensiones | Lecturas selectivas por partición. El ejemplo de este repositorio ya lo usa |
 | **Almacenamiento de objetos** (S3, ADLS, GCS o MinIO) | Las capas salen del disco local | Separación entre cómputo y almacenamiento, y acceso desde varias herramientas |
 | **Delta Lake** sobre las mismas capas | Los Parquet quedan bajo un *transaction log* | Transacciones ACID, `MERGE` para reanudar análisis (reemplaza el checkpoint casero), *time travel* para comparar versiones de prompt, y validación y evolución de esquema |
-| **Modelo dimensional para la capa de negocio** | Tabla de hechos `hecho_evaluacion` (una fila por conversación y parámetro) y dimensiones `agente`, `operacion`, `parametro` y `fecha` | Consultas de BI rápidas y consistentes en un warehouse. `agente` como dimensión lenta tipo 2 para conservar su historial de campañas |
+| **Modelo dimensional para la capa de negocio** | Tabla de hechos `hecho_evaluacion` (una fila por conversación y parámetro) y dimensiones `agente`, `operacion`, `parametro` y `fecha` | Consultas de BI rápidas y consistentes en un warehouse. `agente` como dimensión lenta tipo 2 para conservar su historial de campañas. El ejemplo de este repositorio ya lo implementa |
 | **Orquestación declarativa** (Airflow, Dagster o Prefect) | Las 3 etapas pasan a ser tareas con dependencias | Reintentos, alertas y linaje visibles, en reemplazo de `cron` + `tmux` |
 
 ```mermaid
@@ -137,18 +137,51 @@ erDiagram
     hecho_evaluacion }o--|| dim_fecha : fecha_sk
     hecho_evaluacion {
         string conversacion_id
+        int agente_sk FK
+        int operacion_sk FK
+        int parametro_sk FK
+        int fecha_sk FK
+        string canal
         int calificacion
         float peso
-        string canal
         string version_analisis
     }
     dim_agente {
-        int agente_sk
+        int agente_sk PK
         string agente_id
+        string equipo
         date valido_desde
         date valido_hasta
+        bool es_actual
+    }
+    dim_fecha {
+        int fecha_sk PK
+        date fecha
+        string periodo
+        int dia_semana
+        bool es_fin_de_semana
+    }
+    dim_parametro {
+        int parametro_sk PK
+        string parametro
+        float peso
+    }
+    dim_operacion {
+        int operacion_sk PK
+        string operacion
     }
 ```
+
+### El modelo estrella en el ejemplo
+
+La [etapa 3 del ejemplo](../ejemplo/pipeline.py) construye este modelo sobre la capa de negocio, en `datos/negocio/modelo/`:
+
+- **Grano explícito:** una fila de `hecho_evaluacion` por conversación y parámetro de la matriz. El puntaje ponderado de una conversación es `SUM(calificacion * peso)`, y cuadra con el que calcula pandas.
+- **`dim_agente` como SCD tipo 2:** se construye desde una bitácora de cambios de equipo con `LEAD()`. Cada versión tiene `valido_desde`, `valido_hasta` y `es_actual`, y vence el día antes de que empiece la siguiente.
+- **Búsqueda de clave sustituta en el tiempo:** cada hecho toma la versión del agente vigente **el día de la conversación** (`fecha BETWEEN valido_desde AND valido_hasta`). Un hecho sin versión vigente detiene el pipeline: no se rellena.
+- **`dim_fecha` como calendario completo** de los meses cubiertos, con clave inteligente `AAAAMMDD`, no solo los días que tienen datos.
+
+Por qué importa el tipo 2: si el cambio de equipo sobrescribiera la fila del agente (tipo 1), las conversaciones anteriores al traslado quedarían atribuidas al equipo nuevo. La consulta `SCD2 frente a sobrescribir` de [`consultas.py`](../ejemplo/consultas.py) lo muestra con los datos sintéticos: un equipo creado a mitad de octubre recibe 37 conversaciones al sobrescribir, cuando solo atendió 14.
 
 ## Siguiente
 

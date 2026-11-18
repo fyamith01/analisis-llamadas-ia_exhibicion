@@ -6,13 +6,14 @@
 
 - `llamadas`: una fila por llamada transcrita (metadatos + texto + estado).
 - `mensajes_chat`: una fila por mensaje de WhatsApp (hay que reconstruir el diálogo).
+- `asignaciones_agente`: bitácora de cambios de equipo (alimenta la dimensión SCD2).
 
 Todo es inventado: agentes, clientes, frases y fechas.
 """
 from __future__ import annotations
 
 import random
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -36,6 +37,15 @@ RESPUESTAS = [
     "Comprendo. Antes de cancelar, le cuento que tiene disponible un beneficio que le puede servir.",
 ]
 CIERRES = ["¿Le puedo ayudar en algo más? Que tenga un excelente día.", "Listo.", ""]
+
+# Bitácora de equipos: cada fila dice desde cuándo un agente pertenece a un equipo.
+# Fija (sin azar) para que los cambios de mitad de periodo sean fáciles de seguir.
+ASIGNACIONES = [
+    *[(a, "Equipo Norte" if n % 2 else "Equipo Sur", date(2026, 1, 1)) for n, a in enumerate(AGENTES, start=1)],
+    ("A02", "Equipo Norte", date(2026, 9, 15)),
+    ("A05", "Equipo Sur", date(2026, 10, 1)),
+    ("A07", "Equipo Retención", date(2026, 10, 10)),
+]
 
 
 def dialogo(rng: random.Random, agente: str) -> list[tuple[str, str]]:
@@ -85,9 +95,11 @@ def main() -> None:
     )
     con.executemany("INSERT INTO llamadas VALUES (?, ?, ?, ?, ?, ?)", llamadas)
     con.executemany("INSERT INTO mensajes_chat VALUES (?, ?, ?, ?, ?)", mensajes)
+    con.execute("CREATE TABLE asignaciones_agente (agente_id VARCHAR, equipo VARCHAR, desde DATE)")
+    con.executemany("INSERT INTO asignaciones_agente VALUES (?, ?, ?)", ASIGNACIONES)
     con.close()
     print(f"Fuente sintética creada en {DESTINO.relative_to(Path.cwd()) if DESTINO.is_relative_to(Path.cwd()) else DESTINO}")
-    print(f"  llamadas: {len(llamadas)} · mensajes de chat: {len(mensajes)}")
+    print(f"  llamadas: {len(llamadas)} · mensajes de chat: {len(mensajes)} · asignaciones: {len(ASIGNACIONES)}")
 
 
 if __name__ == "__main__":

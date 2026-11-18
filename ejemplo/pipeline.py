@@ -7,6 +7,7 @@
     etapa 1  extracción   SQL sobre la fuente  → datos/crudo/       (bronce)
     etapa 2  análisis     "LLM" fila por fila  → datos/enriquecido/ (plata)
     etapa 3  informe      métricas en pandas   → datos/negocio/     (oro)
+                          + modelo estrella    → datos/negocio/modelo/
 
 El LLM está SIMULADO con reglas para que el ejemplo corra sin GPU. En el sistema
 real, `analizar()` llama a un modelo con el JSON Schema de `Evaluacion` en `format=`.
@@ -115,6 +116,15 @@ def etapa1_extraccion() -> None:
         escribir_atomico(df, ruta_capa("crudo", periodo))
         print(f"[etapa 1] {periodo}: embudo voz {universo} → {len(voz)} (estado y duración) · "
               f"chats {len(chat)} · analizables {int(df['analizable'].sum())} de {len(df)}")
+
+    # La bitácora de equipos no depende del periodo: alimenta la dimensión SCD2 de agentes.
+    if "asignaciones_agente" not in {r[0] for r in con.execute("SHOW TABLES").fetchall()}:
+        raise SystemExit("La fuente es de una versión anterior: vuelve a correr `uv run generar_datos.py`.")
+    asignaciones = con.execute(
+        "SELECT agente_id, equipo, desde FROM asignaciones_agente ORDER BY agente_id, desde"
+    ).df()
+    escribir_atomico(asignaciones, RAIZ / "crudo" / "asignaciones_agente" / "parte-0.parquet")
+    print(f"[etapa 1] bitácora de equipos: {len(asignaciones)} asignaciones")
     con.close()
 
 
@@ -230,6 +240,7 @@ def etapa3_informe() -> None:
     periodos = periodos_disponibles("enriquecido")
     if not periodos:
         raise SystemExit("No hay capa enriquecida: corre la etapa 2.")
+    todas: list[pd.DataFrame] = []
     for periodo in periodos:
         df = pd.read_parquet(ruta_capa("enriquecido", periodo))
         df = df[df["analizable"]].copy()
@@ -244,8 +255,10 @@ def etapa3_informe() -> None:
                    for m, p in motivos.items() if p > 0.40]
 
         # La capa enriquecida no se reescribe: el puntaje vive en la capa de negocio.
-        columnas = ["conversacion_id", "agente_id", "fecha", "canal", "motivo", *PESOS, "puntaje_ponderado"]
+        columnas = ["conversacion_id", "agente_id", "fecha", "canal", "motivo", *PESOS,
+                    "puntaje_ponderado", "version_analisis"]
         escribir_atomico(df[columnas], ruta_capa("negocio", periodo, "evaluaciones"))
+        todas.append(df[columnas])
         escribir_atomico(por_agente, ruta_capa("negocio", periodo, "ranking_agentes"))
         indicadores = {
             "periodo": periodo,
@@ -260,6 +273,103 @@ def etapa3_informe() -> None:
         salida.write_text(json.dumps(indicadores, ensure_ascii=False, indent=2))
         print(f"[etapa 3] {periodo}: puntaje global {indicadores['puntaje_global']} · "
               f"{len(alertas)} alerta(s) · {salida.relative_to(RAIZ.parent)}")
+
+    construir_modelo_estrella(pd.concat(todas, ignore_index=True))
+
+
+# ----------------------------------------------------------------------------
+# Modelo dimensional (estrella) para consumo de BI
+#
+#   hecho_evaluacion: una fila por conversación × parámetro de la matriz
+#   dim_agente:       SCD tipo 2 (una versión por cada cambio de equipo)
+#   dim_fecha, dim_parametro, dim_operacion
+# ----------------------------------------------------------------------------
+def ruta_modelo(tabla: str) -> Path:
+    return RAIZ / "negocio" / "modelo" / tabla / "parte-0.parquet"
+
+
+SQL_DIM_AGENTE = """
+    SELECT row_number() OVER (ORDER BY agente_id, desde)::INTEGER AS agente_sk,
+           agente_id,
+           equipo,
+           desde AS valido_desde,
+           -- La versión vence el día antes de que empiece la siguiente; la vigente no vence.
+           coalesce((lead(desde) OVER w - INTERVAL 1 DAY)::DATE, DATE '9999-12-31') AS valido_hasta,
+           lead(desde) OVER w IS NULL AS es_actual
+    FROM asignaciones
+    WINDOW w AS (PARTITION BY agente_id ORDER BY desde)
+"""
+
+# Calendario completo de los meses cubiertos, no solo los días con datos.
+SQL_DIM_FECHA = """
+    SELECT (year(d) * 10000 + month(d) * 100 + day(d))::INTEGER AS fecha_sk,
+           d::DATE AS fecha, year(d) AS anio, month(d) AS mes,
+           strftime(d, '%Y-%m') AS periodo,
+           isodow(d) AS dia_semana, isodow(d) >= 6 AS es_fin_de_semana
+    FROM generate_series(
+        (SELECT date_trunc('month', min(fecha)) FROM evaluaciones),
+        (SELECT last_day(max(fecha)) FROM evaluaciones),
+        INTERVAL 1 DAY) AS t(d)
+"""
+
+
+def sql_hecho_evaluacion() -> str:
+    parametros = ", ".join(PESOS)
+    return f"""
+        WITH largo AS (
+            UNPIVOT (SELECT conversacion_id, agente_id, fecha, canal, version_analisis, {parametros}
+                     FROM evaluaciones)
+            ON {parametros} INTO NAME parametro VALUE calificacion
+        )
+        SELECT l.conversacion_id, a.agente_sk, o.operacion_sk, p.parametro_sk, f.fecha_sk,
+               l.canal, l.calificacion::INTEGER AS calificacion, p.peso, l.version_analisis,
+               f.periodo
+        FROM largo l
+        JOIN dim_parametro p USING (parametro)
+        JOIN dim_fecha f ON f.fecha = l.fecha::DATE
+        JOIN dim_operacion o ON o.operacion = '{OPERACION}'
+        -- Búsqueda de clave sustituta "en el tiempo": la versión vigente el día de la conversación.
+        LEFT JOIN dim_agente a
+               ON a.agente_id = l.agente_id
+              AND l.fecha::DATE BETWEEN a.valido_desde AND a.valido_hasta
+    """
+
+
+def construir_modelo_estrella(evaluaciones: pd.DataFrame) -> None:
+    ruta_asignaciones = RAIZ / "crudo" / "asignaciones_agente" / "parte-0.parquet"
+    if not ruta_asignaciones.exists():
+        raise SystemExit("Falta la bitácora de equipos en la capa cruda: corre la etapa 1.")
+
+    con = duckdb.connect()
+    con.register("evaluaciones", evaluaciones)
+    con.register("asignaciones", pd.read_parquet(ruta_asignaciones))
+    dimensiones = {
+        "dim_agente": con.execute(SQL_DIM_AGENTE).df(),
+        "dim_fecha": con.execute(SQL_DIM_FECHA).df(),
+        "dim_parametro": pd.DataFrame({"parametro_sk": range(1, len(PESOS) + 1),
+                                       "parametro": list(PESOS), "peso": list(PESOS.values())}),
+        "dim_operacion": pd.DataFrame({"operacion_sk": [1], "operacion": [OPERACION]}),
+    }
+    for nombre, dim in dimensiones.items():
+        con.register(nombre, dim)
+    hechos = con.execute(sql_hecho_evaluacion()).df()
+    con.close()
+
+    # Integridad referencial: un hecho sin agente vigente es un error de datos, no se rellena.
+    huerfanos = int(hechos["agente_sk"].isna().sum())
+    if huerfanos:
+        raise SystemExit(f"[etapa 3] {huerfanos} hechos sin versión vigente de agente: revisa la bitácora de equipos.")
+    hechos["agente_sk"] = hechos["agente_sk"].astype("int32")
+
+    for nombre, dim in dimensiones.items():
+        escribir_atomico(dim, ruta_modelo(nombre))
+    for periodo, parte in hechos.groupby("periodo"):
+        escribir_atomico(parte.drop(columns="periodo"), ruta_capa("negocio", periodo, "modelo/hecho_evaluacion"))
+
+    agentes = dimensiones["dim_agente"]
+    con_historial = int((agentes.groupby("agente_id").size() > 1).sum())
+    print(f"[etapa 3] modelo estrella: {len(hechos)} hechos · {len(agentes)} versiones de agente "
+          f"({con_historial} con cambio de equipo) · {len(dimensiones['dim_fecha'])} días en dim_fecha")
 
 
 def main() -> None:

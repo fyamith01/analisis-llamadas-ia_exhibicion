@@ -1,6 +1,6 @@
 # Ejemplo ejecutable
 
-Reproduce el patrón del sistema real con **datos 100 % sintéticos**: 3 etapas comunicadas por Parquet, capas crudo → enriquecido → negocio, checkpoints reanudables y consultas SQL analíticas. El LLM está simulado con reglas, así que no necesitas GPU, Ollama ni bases de datos.
+Reproduce el patrón del sistema real con **datos 100 % sintéticos**: 3 etapas comunicadas por Parquet, capas crudo → enriquecido → negocio, un modelo estrella con dimensión SCD tipo 2, checkpoints reanudables y consultas SQL analíticas. El LLM está simulado con reglas, así que no necesitas GPU, Ollama ni bases de datos.
 
 ## Quick path
 
@@ -37,18 +37,27 @@ Si cambias `PROMPT` o `MODELO` en `pipeline.py`, cambia la versión del análisi
 | Huella de entrada y versión del análisis | `huella_entrada`, `version_analisis` |
 | Cita literal por número de fragmento | final de `etapa2_analisis` |
 | Pesos aplicados fuera del modelo y alerta de categoría dominante | `etapa3_informe` |
+| Modelo estrella: grano conversación × parámetro | `construir_modelo_estrella`, `sql_hecho_evaluacion` |
+| Dimensión SCD tipo 2 con `LEAD()` y búsqueda de clave sustituta por fecha | `SQL_DIM_AGENTE`, `sql_hecho_evaluacion` |
+| Calendario completo con clave `AAAAMMDD` | `SQL_DIM_FECHA` |
 | CTE, `RANK`, `LAG`, `QUALIFY`, `UNPIVOT`, `FILTER` | `consultas.py` |
+| SCD2 frente a sobrescribir (SCD1) | última consulta de `consultas.py` |
 
 ## Estructura generada
 
 ```text
 datos/
 ├── fuente/fuente.duckdb                         # simula los sistemas transaccionales
-├── crudo/conversaciones/operacion=demo/periodo=2026-10/parte-0.parquet
+├── crudo/
+│   ├── conversaciones/operacion=demo/periodo=2026-10/parte-0.parquet
+│   └── asignaciones_agente/parte-0.parquet       # bitácora de cambios de equipo
 ├── enriquecido/conversaciones/operacion=demo/periodo=2026-10/parte-0.parquet
 ├── negocio/
 │   ├── evaluaciones/operacion=demo/periodo=…/
-│   └── ranking_agentes/operacion=demo/periodo=…/
+│   ├── ranking_agentes/operacion=demo/periodo=…/
+│   └── modelo/                                   # estrella para BI
+│       ├── hecho_evaluacion/operacion=demo/periodo=…/
+│       └── dim_agente/ · dim_fecha/ · dim_parametro/ · dim_operacion/
 ├── checkpoints/
 └── informes/indicadores_<periodo>.json
 ```
