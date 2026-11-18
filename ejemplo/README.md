@@ -44,6 +44,27 @@ uv run variante_delta.py                          # reanuda v1, aplica el prompt
 
 Cada commit lleva el prompt en su metadata, así que la comparación busca en el historial la última versión de cada prompt y la consulta con DuckDB. Al final de cada corrida, `OPTIMIZE` compacta los archivos pequeños que deja cada lote. Los archivos viejos siguen ahí para el *time travel* hasta que un `VACUUM` los borre: ese es el costo de retención que hay que decidir.
 
+## Auditoría multiagente
+
+`multiagente.py` toma una muestra estratificada por canal y la revisa con tres roles: un **evaluador** que aplica la matriz, un **juez a ciegas** que solo ve la transcripción y un **verificador de citas** determinista. Mide el acuerdo con el **kappa de Cohen** y deja los desacuerdos en una cola de revisión humana.
+
+```bash
+uv run pipeline.py --etapa 1      # la muestra sale de la capa cruda
+uv run multiagente.py             # todo simulado: sin GPU ni claves
+```
+
+Cada rol puede usar un modelo real con la misma interfaz de salida estructurada. Los SDK son dependencias opcionales:
+
+```bash
+uv run --with ollama multiagente.py --evaluador ollama --modelo-ollama qwen2.5:7b   # OLLAMA_HOST si no es local
+uv run --with anthropic multiagente.py --juez claude                              # ANTHROPIC_API_KEY o `ant auth login`
+uv run --with ollama --with anthropic multiagente.py --evaluador ollama --juez claude
+```
+
+Con la API de Claude, el juez usa por defecto `claude-opus-5-5` con salida estructurada (`messages.parse` con el modelo Pydantic) y respaldo automático si un clasificador de seguridad rechaza la petición. Tiene costo por token y envía las transcripciones a la API: con los datos sintéticos del ejemplo no hay problema, pero con datos reales hace falta un acuerdo de tratamiento de datos.
+
+Salidas: `datos/multiagente/auditoria.parquet`, `revision_humana.parquet` y `resumen.json` (kappa y nivel por campo, citas verificadas y conversaciones a revisión).
+
 ## Pruebas
 
 ```bash
@@ -62,6 +83,7 @@ uv run pytest
 | Versión del análisis | Que cambiar el modelo descarte el checkpoint viejo |
 | Esquema | Notas dentro de la matriz, motivos válidos y razonamiento antes que las notas |
 | Variante Delta Lake | Que v1 dé lo mismo que la capa Parquet, que reanudar solo analice lo no confirmado, que repetir la versión no cree commits, que el prompt v2 actualice en sitio y el v1 siga accesible por *time travel*, y que un lote inválido no se confirme |
+| Multiagente | Que el juez no reciba nada del evaluador, el kappa contra casos calculados a mano, cada falla del verificador, cada causa de revisión por separado y los adaptadores de Ollama y Claude con clientes falsos (sin red) |
 | Contratos de calidad | Que cada regla detecte su defecto (una corrupción dirigida por regla) y que una violación detenga la etapa **sin publicar la capa** |
 | Modelo estrella | Grano único, integridad referencial, vigencias SCD2 contiguas, versión vigente por fecha, calendario completo y conciliación con pandas |
 
@@ -81,6 +103,7 @@ Se verificaron introduciendo errores a propósito en el pipeline (mutaciones): c
 | Pesos aplicados fuera del modelo y alerta de categoría dominante | `etapa3_informe` |
 | Contratos de calidad entre capas: auditar antes de publicar | `calidad.py` y las llamadas a `auditar` en `pipeline.py` |
 | `MERGE` por lotes, metadata de commit, `OPTIMIZE` y *time travel* con Delta Lake | `variante_delta.py` |
+| Juez a ciegas, verificador de citas, kappa de Cohen y proveedores intercambiables | `multiagente.py` |
 | Modelo estrella: grano conversación × parámetro | `construir_modelo_estrella`, `sql_hecho_evaluacion` |
 | Dimensión SCD tipo 2 con `LEAD()` y búsqueda de clave sustituta por fecha | `SQL_DIM_AGENTE`, `sql_hecho_evaluacion` |
 | Calendario completo con clave `AAAAMMDD` | `SQL_DIM_FECHA` |
@@ -103,6 +126,7 @@ datos/
 │       ├── hecho_evaluacion/operacion=demo/periodo=…/
 │       └── dim_agente/ · dim_fecha/ · dim_parametro/ · dim_operacion/
 ├── delta/enriquecido/                            # variante Delta: _delta_log/ + periodo=…/
+├── multiagente/                                  # auditoría, cola de revisión humana y resumen
 ├── checkpoints/
 └── informes/
     ├── indicadores_<periodo>.json

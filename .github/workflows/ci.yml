@@ -46,6 +46,9 @@ jobs:
           uv run variante_delta.py --prompt v1 --interrumpir 40
           uv run variante_delta.py
 
+      - name: Auditoría multiagente simulada (evaluador, juez a ciegas y verificador)
+        run: uv run multiagente.py
+
   diagramas:
     name: Diagramas Mermaid
     runs-on: ubuntu-latest

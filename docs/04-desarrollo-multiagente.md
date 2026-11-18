@@ -147,7 +147,7 @@ sequenceDiagram
 
 ## El mismo patrón dentro del producto
 
-Lo que funcionó para desarrollar también se aplicó al sistema: **un modelo genera y otro juzga a ciegas**. Claude evaluó muestras etiquetadas sin ver las predicciones de los modelos locales ni de un clasificador especializado, y con eso se eligió el modelo de producción (ver [capítulo 3](03-ia-en-el-pipeline.md#comparación-de-modelos-y-llm-como-juez)).
+Lo que funcionó para desarrollar también se aplicó al sistema: **un modelo genera y otro juzga a ciegas**. Claude evaluó muestras etiquetadas sin ver las predicciones de los modelos locales ni de un clasificador especializado, y con eso se eligió el modelo de producción (ver [capítulo 3](03-ia-en-el-pipeline.md#comparación-de-modelos-y-llm-como-juez)). El ejemplo lo reproduce con datos sintéticos en [`multiagente.py`](../ejemplo/multiagente.py): evaluador, juez a ciegas, verificador de citas y kappa de Cohen.
 
 ## Siguiente
 

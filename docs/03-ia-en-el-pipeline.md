@@ -86,6 +86,26 @@ flowchart LR
 - **Restricción operativa.** El mejor modelo en calidad no cabía en la GPU con la concurrencia requerida junto a Whisper. Se eligió el siguiente, y la decisión quedó documentada.
 - **Etiquetado a ciegas.** Para evaluar un clasificador especializado de código abierto frente al LLM, se exportó una muestra **sin las predicciones** de ninguno, la etiquetó un juez (Claude) sin verlas y luego se calculó la exactitud y el acuerdo de cada uno. El clasificador no superó al LLM y no se adoptó.
 
+### El patrón en el ejemplo
+
+[`multiagente.py`](../ejemplo/multiagente.py) reproduce el patrón con datos sintéticos, escrito desde cero (los prompts no son los del sistema real). Tres roles revisan una muestra estratificada por canal:
+
+```mermaid
+flowchart LR
+    M[Muestra<br/>estratificada por canal] --> E[Evaluador<br/>matriz completa]
+    M --> J[Juez a ciegas<br/>solo la transcripción]
+    E --> V[Verificador de citas<br/>código, no un modelo]
+    E & J --> K[Kappa de Cohen<br/>motivo y resolución]
+    V & K --> R[Cola de revisión humana<br/>desacuerdos y citas que fallan]
+```
+
+- **A ciegas por construcción.** La función del juez solo recibe la transcripción. Una prueba registra el prompt del juez y comprueba que no contiene nada de lo que produjo el evaluador.
+- **Kappa, no porcentaje de acuerdo.** Con categorías desbalanceadas, un 80 % de coincidencia puede ser peor que el azar. El kappa de Cohen descuenta el acuerdo esperado por azar y se interpreta con las bandas de Landis y Koch.
+- **Verificador determinista.** Comprueba que el fragmento citado exista y mencione el motivo elegido. No usa un modelo, así que no puede equivocarse "con seguridad".
+- **Proveedor por rol.** Cada rol puede ser simulado (por defecto, sin GPU ni claves), Ollama local o la API de Claude, con la misma interfaz de salida estructurada. La combinación típica es evaluador local y juez de referencia en la API.
+
+En la corrida simulada, el evaluador elige el motivo buscando palabras en toda la conversación, incluida la respuesta del agente. El juez se fija en lo que pidió el cliente. El kappa de motivo sale bajo y el verificador marca las citas que no respaldan el motivo: esos casos van a revisión humana. Es el mismo tipo de sesgo que la comparación a ciegas sirve para detectar.
+
 ## Guardarraíles
 
 | Riesgo | Control |
