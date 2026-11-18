@@ -48,6 +48,8 @@ flowchart TB
 | **Verificador** | Solo si el cambio toca algo de alto riesgo (datos, seguridad, contratos, concurrencia, despliegue) | Documento completo y comandos de prueba | Veredicto por cada spec |
 | **Revisores + refutador** | Revisión de un commit candidato | El diff congelado | Hallazgos. El refutador intenta tumbarlos antes de que bloqueen |
 
+En [`artefactos/agentes/`](artefactos/agentes/) hay dos definiciones de subagente escritas desde cero para este repositorio: un explorador de solo lectura y un verificador que ejecuta pruebas pero no tiene herramientas de edición.
+
 ### Por qué subagentes y no una sola sesión
 
 - **Contexto limpio.** Cada subagente lee lo que necesita y devuelve un resumen. La sesión principal no se llena de archivos y conserva el hilo de la conversación.
@@ -97,6 +99,8 @@ Reglas que hacen que funcione:
 - **Cada tarea declara su ruta** (directa o delegada) y su evidencia. Si se salta una delegación, queda a la vista.
 - **Nada se marca como hecho sin una prueba observada.** Las verificaciones fallidas o pendientes se registran tal cual.
 - **Un cambio de requisito** agrega una entrada al log, reescribe solo la spec afectada y reabre solo su tarea.
+
+Un documento completo de ejemplo, con criterios de aceptación y un cambio de requisito en el log, está en [`artefactos/documento-de-feature.md`](artefactos/documento-de-feature.md).
 
 ## Memoria persistente
 
